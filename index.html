@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <title>STICKER SLOP STUDIO</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -76,7 +76,7 @@
     /* WORKSPACE & ARTBOARD BACKGROUND */
     /* ---------------------------------------------------- */
     #workspace {
-      position: fixed; inset: 0; width: 100vw; height: 100vh;
+      position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh;
       overflow: hidden; background: #101014;
       display: flex;
     }
@@ -429,6 +429,47 @@
       background: rgba(255,255,255,0.2); padding: 1px 5px; border-radius: 10px; font-size: 10px;
     }
     .hud-divider { width: 1px; height: 18px; background: rgba(255,255,255,0.2); margin: 0 2px; flex-shrink: 0; }
+
+    /* ---------------------------------------------------- */
+    /* MOBILE "•••" MORE-ACTIONS BOTTOM SHEET */
+    /* ---------------------------------------------------- */
+    #hud-more { display: none; } /* mobile-only; shown inside the 768px media query */
+    #hud-more-sheet {
+      position: fixed; inset: 0; z-index: 650; display: none;
+    }
+    #hud-more-sheet.open { display: block; }
+    #hud-more-sheet .sheet-backdrop {
+      position: absolute; inset: 0; background: rgba(0,0,0,0.45);
+    }
+    #hud-more-sheet .sheet-panel {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      background: rgba(20, 20, 28, 0.97); backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+      border-top: 1px solid rgba(255,255,255,0.22);
+      border-radius: 16px 16px 0 0;
+      padding: 8px 10px calc(10px + env(safe-area-inset-bottom));
+      display: flex; flex-direction: column; gap: 6px;
+      box-shadow: 0 -10px 30px rgba(0,0,0,0.6);
+      animation: sheetSlideUp 0.18s ease-out;
+      max-height: 80dvh; overflow-y: auto; touch-action: pan-y;
+    }
+    @keyframes sheetSlideUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+    .sheet-grab {
+      width: 36px; height: 4px; border-radius: 2px;
+      background: rgba(255,255,255,0.3); margin: 2px auto 6px; flex-shrink: 0;
+    }
+    .sheet-row {
+      width: 100%; min-height: 48px;
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 14px; text-align: left;
+      background: rgba(255,255,255,0.1); color: #f0f0f5;
+      border: 1px solid rgba(255,255,255,0.12); border-radius: 12px;
+      font-size: 13px; font-weight: 700; cursor: pointer;
+    }
+    .sheet-row:active { background: rgba(255,255,255,0.25); }
 
     /* ---------------------------------------------------- */
     /* ON-DEMAND PULL-UP ZOOM DRAWER */
@@ -1119,10 +1160,12 @@
         width: 100vw !important;
         max-width: 100vw !important;
         height: 52vh !important;
+        height: 52dvh !important;
         max-height: 72vh !important;
+        max-height: 72dvh !important;
         left: 0 !important;
         right: 0 !important;
-        bottom: 54px !important;
+        bottom: calc(54px + env(safe-area-inset-bottom)) !important;
         top: auto !important;
         border-radius: 16px 16px 0 0 !important;
         border-left: none !important;
@@ -1139,60 +1182,163 @@
       }
 
       .dock-header-bar {
-        height: 42px !important;
+        height: 48px !important;
         padding: 0 6px !important;
       }
 
-      .dock-tab {
-        padding: 6px 8px !important;
-        font-size: 11.5px !important;
+      /* Dock tabs: no sideways scroll — icon-only so all 4 always fit */
+      .dock-tabs-bar {
+        overflow-x: hidden !important;
       }
+      .dock-tab {
+        flex: 1 !important;
+        justify-content: center !important;
+        min-height: 44px !important;
+        padding: 6px !important;
+        font-size: 12px !important;
+      }
+      .dock-tab .tab-title { display: none !important; }
+      .dock-tab .tab-icon { font-size: 18px !important; }
 
       /* Floating windows on mobile */
       .floating-window {
         max-width: 95vw !important;
         max-height: 75vh !important;
+        max-height: 75dvh !important;
       }
 
-      /* Movable on-canvas quick actions on mobile */
+      /* Desktop window mode is dead on mobile */
+      .win-resize-handle, .btn-win-dock { display: none !important; }
+
+      /* Movable on-canvas quick actions: full-width, wraps down, no sideways scroll */
       #quick-transform-bar {
-        bottom: 60px !important;
-        max-width: 96vw !important;
-        overflow-x: auto !important;
-        justify-content: flex-start !important;
-        padding: 4px 6px !important;
+        bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+        left: 50% !important;
+        width: calc(100vw - 12px) !important;
+        max-width: calc(100vw - 12px) !important;
+        overflow: visible !important;
+        border-radius: 18px !important;
+        padding: 0 !important;
+      }
+      #quick-transform-bar .window-header {
+        flex-wrap: wrap !important;
+        justify-content: center !important;
+        height: auto !important;
+        max-height: 42dvh !important;
+        overflow-y: auto !important;
+        touch-action: pan-y !important;
+        border-radius: 18px !important;
+        padding: 6px !important;
       }
 
-      /* Bottom Navigation HUD on mobile */
+      /* Bottom Navigation HUD: exactly 5 buttons, fits on one screen, no scroll */
       #mobile-hud {
-        bottom: 4px !important;
+        bottom: calc(4px + env(safe-area-inset-bottom)) !important;
         padding: 4px 8px !important;
         gap: 4px !important;
         border-radius: 20px !important;
         width: calc(100vw - 12px) !important;
         max-width: calc(100vw - 12px) !important;
         justify-content: space-around !important;
+        overflow: visible !important;
       }
+      #hud-toggle-project, #hud-toggle-zoom, #hud-redo,
+      #hud-toggle-pan, #hud-center-layer, #hud-toggle-actions,
+      #hud-dock-all, #hud-float-all, #hud-toggle-clean,
+      #mobile-hud .hud-divider {
+        display: none !important;
+      }
+      #hud-more { display: flex !important; }
 
       .hud-btn {
-        padding: 6px 9px !important;
-        font-size: 11px !important;
-        min-height: 38px !important;
+        padding: 6px 8px !important;
+        font-size: 12px !important;
+        min-height: 44px !important;
         border-radius: 16px !important;
+        flex-shrink: 1 !important;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+      }
+      #mobile-hud { gap: 3px !important; }
+
+      /* Zoom drawer re-anchors above the full-width HUD (opened via ••• sheet) */
+      #mobile-hud .zoom-drawer {
+        position: fixed !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        bottom: calc(100% + 10px) !important;
+        top: auto !important;
+        width: min(300px, calc(100vw - 16px)) !important;
       }
 
       /* Generous touch targets for controls on mobile */
-      button, input[type="range"], select {
-        min-height: 36px;
+      button, input, select, .hud-btn {
+        min-height: 44px;
       }
-      
+
+      /* Inspector tabs: 2-column grid of chunky buttons, no sideways strip */
+      .tabs {
+        display: grid !important;
+        grid-template-columns: 1fr 1fr;
+        gap: 6px;
+        padding: 6px;
+      }
+      .tab {
+        min-height: 44px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 6px !important;
+        border: 1px solid #b0b0b8;
+        border-radius: 8px;
+        background: rgba(255,255,255,0.7);
+        font-size: 12px !important;
+      }
+      .tab.active {
+        border-color: #0066ff;
+        border-bottom: 2px solid #0066ff;
+      }
+
+      /* Prop rows stack: label on its own line, control full-width under it */
       .prop-row {
-        margin-bottom: 8px !important;
+        flex-direction: column !important;
+        align-items: stretch !important;
+        gap: 4px !important;
+        margin-bottom: 10px !important;
+      }
+      .prop-row label {
+        flex: none !important;
+        font-size: 13px !important;
+      }
+      .prop-row > div, .prop-row > input, .prop-row > select {
+        flex: none !important;
+        width: 100% !important;
+      }
+
+      /* Legibility floors */
+      .layer-item { font-size: 13px !important; }
+      .layer-item button, .qt-btn, .win-btn, .zoom-pill-btn,
+      .tool-mode-pill button, .zoom-drawer-close, .btn-reroll {
+        font-size: 12px !important;
+      }
+      button { font-size: 12px; }
+      /* Elements tagged at init because their inline font-size is below 11px */
+      .m-fs-fix { font-size: 12px !important; }
+
+      /* Panel scrolling must not fight the global touch-action: none */
+      .dock-full-content, .window-body {
+        touch-action: pan-y;
+      }
+
+      /* Full-screen overlays respect the top notch */
+      #export-overlay, #gif-modal, #burst-gif-modal {
+        padding-top: max(12px, env(safe-area-inset-top)) !important;
       }
 
       .kf-prop-btn {
-        width: 26px !important;
-        height: 26px !important;
+        width: 32px !important;
+        height: 32px !important;
         font-size: 13px !important;
       }
     }
@@ -2894,7 +3040,27 @@ Hit Enter for multiple lines" style="width:100%; font-family:inherit; font-size:
     <button class="hud-btn" id="hud-dock-all" title="Dock all panels together into sidebar">🗄️ Dock All</button>
     <button class="hud-btn" id="hud-float-all" title="Float all panels as separate movable windows">🚀 Float All</button>
     <button class="hud-btn" id="hud-toggle-clean" title="Clean View (Hide UI)">👁️ View</button>
+
+    <!-- MOBILE-ONLY: OPENS THE MORE-ACTIONS BOTTOM SHEET -->
+    <button class="hud-btn" id="hud-more" title="More Actions">•••</button>
   </div></div>
+
+<!-- MOBILE "•••" MORE-ACTIONS BOTTOM SHEET -->
+<div id="hud-more-sheet">
+  <div class="sheet-backdrop"></div>
+  <div class="sheet-panel">
+    <div class="sheet-grab"></div>
+    <button class="sheet-row" data-proxy="hud-toggle-project">📐 Project &amp; Export</button>
+    <button class="sheet-row" data-proxy="hud-toggle-zoom">🔍 Zoom &amp; View</button>
+    <button class="sheet-row" data-proxy="hud-redo">↷ Redo</button>
+    <button class="sheet-row" data-proxy="hud-toggle-pan">✋ Hand / Pan Mode</button>
+    <button class="sheet-row" data-proxy="hud-center-layer">🎯 Center Layer</button>
+    <button class="sheet-row" data-proxy="hud-toggle-actions">⚡ Quick Actions Toolbar</button>
+    <button class="sheet-row" data-proxy="hud-dock-all">🗄️ Dock All Panels</button>
+    <button class="sheet-row" data-proxy="hud-float-all">🚀 Float All Panels</button>
+    <button class="sheet-row" data-proxy="hud-toggle-clean">👁️ Clean Canvas View</button>
+  </div>
+</div>
 
 </div>
 <!-- DOCK CONTEXT POPUP -->
@@ -11702,6 +11868,7 @@ requestAnimationFrame(animationLoop);
 
   document.querySelectorAll('.window-header').forEach(header => {
     header.addEventListener('pointerdown', e => {
+      if (window.innerWidth < 768) return; // floating-window drag is desktop-only
       if (e.target.closest('.win-btn') || e.target.closest('button')) return;
       const targetId = header.dataset.target;
       const win = document.getElementById(targetId);
@@ -11989,6 +12156,50 @@ requestAnimationFrame(animationLoop);
 
   window.addEventListener('resize', () => {
     fitCanvasToView();
+  });
+
+  // ---------------------------------------------------------------
+  // MOBILE P0: HAPTICS
+  // ---------------------------------------------------------------
+  function hap(ms){ navigator.vibrate?.(ms) }
+  document.addEventListener('click', (e) => {
+    if (e.target.closest('.hud-btn, .qt-btn')) hap(8);
+  });
+  document.getElementById('btn-timeline-add-kf')?.addEventListener('click', () => hap(15));
+  document.getElementById('btn-timeline-del-kf')?.addEventListener('click', () => hap(15));
+
+  // ---------------------------------------------------------------
+  // MOBILE P0: "•••" MORE-ACTIONS BOTTOM SHEET
+  // Rows proxy the real HUD buttons (hidden on mobile), so every
+  // action keeps its existing handler and state logic.
+  // ---------------------------------------------------------------
+  const hudMoreBtn = document.getElementById('hud-more');
+  const hudMoreSheet = document.getElementById('hud-more-sheet');
+  if (hudMoreBtn && hudMoreSheet) {
+    hudMoreBtn.addEventListener('click', () => hudMoreSheet.classList.add('open'));
+    hudMoreSheet.querySelector('.sheet-backdrop').addEventListener('click', () => {
+      hudMoreSheet.classList.remove('open');
+    });
+    hudMoreSheet.querySelectorAll('.sheet-row').forEach(row => {
+      row.addEventListener('click', () => {
+        hudMoreSheet.classList.remove('open');
+        hap(8);
+        // Defer so this click finishes bubbling before the proxied action runs,
+        // otherwise document-level close-on-outside-click handlers (e.g. the
+        // zoom drawer's) immediately undo the action.
+        setTimeout(() => document.getElementById(row.dataset.proxy)?.click(), 0);
+      });
+    });
+  }
+
+  // ---------------------------------------------------------------
+  // MOBILE P0: LEGIBILITY — tag elements whose INLINE font-size is
+  // below 11px; the mobile media query lifts .m-fs-fix to 12px.
+  // Inline styles themselves are never modified.
+  // ---------------------------------------------------------------
+  document.querySelectorAll('[style*="font-size"]').forEach(el => {
+    const m = /font-size:\s*([\d.]+)px/.exec(el.getAttribute('style') || '');
+    if (m && parseFloat(m[1]) < 11) el.classList.add('m-fs-fix');
   });
 })();
 </script>
