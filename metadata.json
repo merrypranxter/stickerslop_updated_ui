@@ -1,0 +1,6 @@
+{
+  "name": "STICKER SLOP STUDIO",
+  "description": "Full-scale animated GIF sticker editing studio with interactive keyframing timeline, color cycle hue interpolation, in-place Photo Flipbook creator, shape masking, mobile-friendly touch interface, and retro 2007 effects.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
