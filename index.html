@@ -5350,6 +5350,23 @@ function renderTextLayer(ctx, l, time) {
   if (maxWidth < 20) maxWidth = 20;
   if (totalHeight < 20) totalHeight = 20;
 
+  // PHASE 0: render text onto its own offscreen canvas so the unified
+  // compositing pipeline (adjustments / mask / erase) applies to text too.
+  // Pad for strokes, shadow, extrude, plate and per-letter motion overflow.
+  const __targetCtx = ctx;
+  const __strokePad = (parseInt(l.s1w) || 0) / 2 + (parseInt(l.s2w) || 0) + (parseInt(l.s3w) || 0);
+  const __shadowPad = (l.shb > 0) ? ((l.shb || 0) + Math.max(Math.abs(l.shx || 0), Math.abs(l.shy || 0))) : 0;
+  const __extrudePad = (l.extrude && l.extrude.en) ? (Math.max(Math.abs(l.extrude.x || 0), Math.abs(l.extrude.y || 0)) * (l.extrude.d || 10)) : 0;
+  const __platePad = (l.plate && l.plate.en) ? (l.plate.pad || 0) : 0;
+  const __motionPad = (l.motion && l.motion.type && l.motion.type !== 'none') ? (parseFloat(l.motion.amt) || 20) : 0;
+  const __pad = Math.ceil(__strokePad + __shadowPad + __extrudePad + __platePad + __motionPad) + 56;
+  const __offW = Math.min(4096, Math.ceil(maxWidth + __pad * 2));
+  const __offH = Math.min(4096, Math.ceil(totalHeight + __pad * 2));
+  const off = document.createElement('canvas');
+  off.width = __offW; off.height = __offH;
+  ctx = off.getContext('2d', { willReadFrequently: true });
+  ctx.translate(__offW / 2, __offH / 2);
+
   // 1. Sticker Plate Rendering
   if (l.plate && l.plate.en) {
     const pad = l.plate.pad || 0;
@@ -5389,6 +5406,7 @@ function renderTextLayer(ctx, l, time) {
       ctx.save();
       ctx.drawImage(activeGlitterFrame, -activeGlitterFrame.width / 2, -activeGlitterFrame.height / 2);
       ctx.restore();
+      compositeLayerEffects(off, l, time, __targetCtx, { skipGlitter: true, skipGlitch: true });
       return;
     }
 
@@ -5661,7 +5679,9 @@ function renderTextLayer(ctx, l, time) {
     const dist = glitchAnim ? baseDist * (glitchAnim.i || 1) : baseDist;
     const timeJitter = Math.sin(time * 35 + 17) * (dist * 0.7);
     const sliceJitter = Math.sin(time * 25 + 9) > 0.4 ? (Math.cos(time * 40) * dist * 1.5) : 0;
-    const baseOp = (typeof l.opacity === 'number' && !isNaN(l.opacity)) ? Math.max(0, Math.min(1, l.opacity)) : 1;
+    // Phase 0: text renders offscreen; layer opacity is applied once by the
+    // main ctx when the finished canvas is composited — keep RGB passes relative.
+    const baseOp = 1;
     
     // Cyan channel
     ctx.save();
@@ -5679,6 +5699,10 @@ function renderTextLayer(ctx, l, time) {
   } else {
     drawPass(null, 0, 0);
   }
+
+  // PHASE 0: adjustments -> mask -> erase, then composite the finished text
+  // canvas onto the main ctx (glitter/glitch already handled above for text).
+  compositeLayerEffects(off, l, time, __targetCtx, { skipGlitter: true, skipGlitch: hasGlitchAnim });
 }
 
 // --------------------------------------------------------
@@ -5787,76 +5811,27 @@ function hslToRgb(h, s, l) {
   return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
 }
 
-function renderMediaLayer(ctx, l, time) {
-  const asset = appState.assets[l.assetId];
-  if (!asset) return;
-  
-  let imgSource = null;
-  if (asset.type === 'image') imgSource = asset.img;
-  if (asset.type === 'gif' && asset.frames && asset.frames.length > 0) {
-    const tot = asset.totalDurationMs || asset.frames.reduce((sum, f) => sum + (f.delay || 100), 0) || 1000;
-    const speed = l.speed || 1;
-    let t = ((time * 1000 * speed) % tot + tot) % tot;
-    if (l.reverse) {
-      t = tot - t;
-    }
-    let cur = 0;
-    for (let f of asset.frames) {
-      cur += (f.delay || 100);
-      if (cur >= t) {
-        imgSource = f.canvas;
-        break;
-      }
-    }
-    if (!imgSource) imgSource = asset.frames[asset.frames.length - 1].canvas;
-  }
-  if (asset.type === 'video' && asset.el && asset.el.readyState >= 2) {
-    imgSource = asset.el;
-  }
-  
-  if (!imgSource) return;
-
-  // Live, non-destructive background removal (images / GIF frame canvases only;
-  // the source asset is never mutated — result is cached per source+tolerance)
-  if (l.bgRemove && l.bgRemove.en && asset.type !== 'video') {
-    imgSource = getBgRemovedSource(imgSource, l.bgRemove.tolerance !== undefined ? l.bgRemove.tolerance : 36);
-  }
-
-  const w = asset.width || 200;
-  const h = asset.height || 200;
-  
-  // Create offscreen canvas for layer effects
-  const off = document.createElement('canvas');
-  off.width = w; off.height = h;
+// --------------------------------------------------------
+// UNIFIED COMPOSITING PIPELINE (PHASE 0)
+// Shared by media, text and sparkle layers:
+//   adjustments -> applyLayerMask -> erase-mask -> glitter/glitch -> composite
+// `off` is the layer's own offscreen canvas (content already drawn, centered).
+// `ctx` is the main render context (already translated/rotated/scaled so the
+// layer is centered on the origin). opts.skipGlitter / opts.skipGlitch let a
+// renderer opt out when it already handled that effect internally (text does).
+// --------------------------------------------------------
+function compositeLayerEffects(off, l, time, ctx, opts) {
+  opts = opts || {};
+  const w = off.width;
+  const h = off.height;
+  if (w <= 0 || h <= 0) return;
   const octx = off.getContext('2d', { willReadFrequently: true });
-  octx.drawImage(imgSource, 0, 0, w, h);
-  
+  // Renderers may leave a transform on the layer canvas context (text centers
+  // its coordinate system). Mask/erase ops must run in raw device pixels.
+  octx.setTransform(1, 0, 0, 1, 0, 0);
   let imgData = octx.getImageData(0, 0, w, h);
   let d = imgData.data;
-  
-  // Chroma Key (multi-color: alpha is cleared if ANY key color matches)
-  if (l.chroma && l.chroma.en) {
-    let ckColors = Array.isArray(l.chroma.colors) ? l.chroma.colors : null;
-    if (!ckColors) {
-      // Backward compat: legacy single-color shape { c, t }
-      ckColors = [{ c: l.chroma.c || '#00ff00', t: l.chroma.t !== undefined ? l.chroma.t : 0.1 }];
-    }
-    const ckParsed = ckColors.map(k => ({
-      r: parseInt((k.c || '#00ff00').substr(1, 2), 16),
-      g: parseInt((k.c || '#00ff00').substr(3, 2), 16),
-      b: parseInt((k.c || '#00ff00').substr(5, 2), 16),
-      tol: (k.t !== undefined ? k.t : 0.1) * 441.67
-    }));
-    for (let i = 0; i < d.length; i += 4) {
-      if (d[i+3] === 0) continue;
-      for (let k = 0; k < ckParsed.length; k++) {
-        const kp = ckParsed[k];
-        const dist = Math.sqrt((d[i]-kp.r)**2 + (d[i+1]-kp.g)**2 + (d[i+2]-kp.b)**2);
-        if (dist < kp.tol) { d[i+3] = 0; break; }
-      }
-    }
-  }
-  
+
   // Tone Curves & LUTs Preparation
   let lutMaster = null, lutR = null, lutG = null, lutB = null;
   if (l.curves && l.curves.en !== false) {
@@ -6045,8 +6020,17 @@ function renderMediaLayer(ctx, l, time) {
     applyLayerMask(off, l);
   }
 
+  // Erase-mask hook (Phase 2): persistent hand-painted eraser canvas,
+  // applied non-destructively after the mask, before the final composite.
+  if (l.eraseMask) {
+    octx.save();
+    octx.globalCompositeOperation = 'destination-out';
+    octx.drawImage(l.eraseMask, 0, 0, w, h);
+    octx.restore();
+  }
+
   // 2. SPEC COMPLIANT 2007 GLITTER ENGINE PASS FOR MEDIA
-  if (l.glitter && l.glitter.en) {
+  if (!opts.skipGlitter && l.glitter && l.glitter.en) {
     const frames = getLayerGlitterFrames(l, w, h);
     const delayMs = l.glitter.delayMs || 110;
     const numFrames = l.glitter.frames || 3;
@@ -6061,7 +6045,7 @@ function renderMediaLayer(ctx, l, time) {
   }
 
   // 3. Glitch & RGB Split Effect for Media
-  const hasMediaGlitch = (l.glitch && l.glitch.en) || (Array.isArray(l.anims) && l.anims.some(a => a.type === 'glitch'));
+  const hasMediaGlitch = !opts.skipGlitch && ((l.glitch && l.glitch.en) || (Array.isArray(l.anims) && l.anims.some(a => a.type === 'glitch')));
   if (hasMediaGlitch) {
     const baseDist = parseFloat(l.glitch ? l.glitch.rgbDist : 6) || 6;
     const timeJitter = Math.sin(time * 35 + 19) * (baseDist * 0.8);
@@ -6084,6 +6068,81 @@ function renderMediaLayer(ctx, l, time) {
     ctx.drawImage(off, -w/2, -h/2);
     ctx.restore();
   }
+}
+window.compositeLayerEffects = compositeLayerEffects;
+
+function renderMediaLayer(ctx, l, time) {
+  const asset = appState.assets[l.assetId];
+  if (!asset) return;
+  
+  let imgSource = null;
+  if (asset.type === 'image') imgSource = asset.img;
+  if (asset.type === 'gif' && asset.frames && asset.frames.length > 0) {
+    const tot = asset.totalDurationMs || asset.frames.reduce((sum, f) => sum + (f.delay || 100), 0) || 1000;
+    const speed = l.speed || 1;
+    let t = ((time * 1000 * speed) % tot + tot) % tot;
+    if (l.reverse) {
+      t = tot - t;
+    }
+    let cur = 0;
+    for (let f of asset.frames) {
+      cur += (f.delay || 100);
+      if (cur >= t) {
+        imgSource = f.canvas;
+        break;
+      }
+    }
+    if (!imgSource) imgSource = asset.frames[asset.frames.length - 1].canvas;
+  }
+  if (asset.type === 'video' && asset.el && asset.el.readyState >= 2) {
+    imgSource = asset.el;
+  }
+  
+  if (!imgSource) return;
+
+  // Live, non-destructive background removal (images / GIF frame canvases only;
+  // the source asset is never mutated — result is cached per source+tolerance)
+  if (l.bgRemove && l.bgRemove.en && asset.type !== 'video') {
+    imgSource = getBgRemovedSource(imgSource, l.bgRemove.tolerance !== undefined ? l.bgRemove.tolerance : 36);
+  }
+
+  const w = asset.width || 200;
+  const h = asset.height || 200;
+  
+  // Create offscreen canvas for layer effects
+  const off = document.createElement('canvas');
+  off.width = w; off.height = h;
+  const octx = off.getContext('2d', { willReadFrequently: true });
+  octx.drawImage(imgSource, 0, 0, w, h);
+
+  // Chroma Key (multi-color: alpha is cleared if ANY key color matches)
+  if (l.chroma && l.chroma.en) {
+    const imgData = octx.getImageData(0, 0, w, h);
+    const d = imgData.data;
+    let ckColors = Array.isArray(l.chroma.colors) ? l.chroma.colors : null;
+    if (!ckColors) {
+      // Backward compat: legacy single-color shape { c, t }
+      ckColors = [{ c: l.chroma.c || '#00ff00', t: l.chroma.t !== undefined ? l.chroma.t : 0.1 }];
+    }
+    const ckParsed = ckColors.map(k => ({
+      r: parseInt((k.c || '#00ff00').substr(1, 2), 16),
+      g: parseInt((k.c || '#00ff00').substr(3, 2), 16),
+      b: parseInt((k.c || '#00ff00').substr(5, 2), 16),
+      tol: (k.t !== undefined ? k.t : 0.1) * 441.67
+    }));
+    for (let i = 0; i < d.length; i += 4) {
+      if (d[i+3] === 0) continue;
+      for (let k = 0; k < ckParsed.length; k++) {
+        const kp = ckParsed[k];
+        const dist = Math.sqrt((d[i]-kp.r)**2 + (d[i+1]-kp.g)**2 + (d[i+2]-kp.b)**2);
+        if (dist < kp.tol) { d[i+3] = 0; break; }
+      }
+    }
+    octx.putImageData(imgData, 0, 0);
+  }
+
+  // Unified compositing pipeline (Phase 0): adjustments -> mask -> erase -> glitter/glitch
+  compositeLayerEffects(off, l, time, ctx);
 }
 
 // --------------------------------------------------------
